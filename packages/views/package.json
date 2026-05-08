@@ -93,8 +93,8 @@
     "@tanstack/react-table": "catalog:",
     "i18next": "catalog:",
     "lucide-react": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-i18next": "catalog:",
     "zustand": "catalog:"
   },

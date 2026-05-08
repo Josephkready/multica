@@ -52,8 +52,8 @@
     "vaul": "^1.1.2"
   },
   "peerDependencies": {
-    "react": "catalog:",
-    "react-dom": "catalog:"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@multica/tsconfig": "workspace:*",
