@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Plus, FolderKanban, UserMinus, Check } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { Plus, FolderKanban, UserMinus, Check, ChevronUp, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { useUpdateProject } from "@multica/core/projects/mutations";
@@ -43,6 +43,13 @@ import {
   useProjectPriorityLabels,
   useFormatRelativeDate,
 } from "./labels";
+import {
+  DEFAULT_PROJECT_SORT,
+  defaultDirectionFor,
+  sortProjects,
+  type ProjectSort,
+  type ProjectSortKey,
+} from "./sort-projects";
 
 function ProjectRow({ project }: { project: Project }) {
   const { t } = useT("projects");
@@ -228,11 +235,68 @@ function ProjectRow({ project }: { project: Project }) {
 }
 
 
+interface SortHeaderProps {
+  label: string;
+  sortKey: ProjectSortKey;
+  active: boolean;
+  direction: "asc" | "desc";
+  align: "left" | "center" | "right";
+  width?: string;
+  onToggle: (key: ProjectSortKey) => void;
+}
+
+function SortHeader({ label, sortKey, active, direction, align, width, onToggle }: SortHeaderProps) {
+  const justify = align === "left" ? "justify-start" : align === "right" ? "justify-end" : "justify-center";
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(sortKey)}
+      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
+      className={cn(
+        "flex h-full items-center gap-0.5 shrink-0 rounded hover:text-foreground transition-colors cursor-pointer",
+        justify,
+        width,
+        align === "left" && "min-w-0 flex-1",
+        active && "text-foreground",
+      )}
+    >
+      <span className={cn(align === "left" && "truncate")}>{label}</span>
+      {active &&
+        (direction === "asc" ? (
+          <ChevronUp className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        ))}
+    </button>
+  );
+}
+
 export function ProjectsPage() {
   const { t } = useT("projects");
   const wsId = useWorkspaceId();
   const { data: projects = [], isLoading } = useQuery(projectListOptions(wsId));
+  const { data: members = [] } = useQuery(memberListOptions(wsId));
+  const { data: agents = [] } = useQuery(agentListOptions(wsId));
+  const { getActorName } = useActorName();
   const openCreateProject = () => useModalStore.getState().open("create-project");
+
+  const [sort, setSort] = useState<ProjectSort>(DEFAULT_PROJECT_SORT);
+
+  const handleToggleSort = useCallback((key: ProjectSortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: defaultDirectionFor(key) },
+    );
+  }, []);
+
+  // Sort depends on actor names (for the lead column), so re-sort whenever
+  // members/agents finish loading even if the sort key didn't change.
+  const sortedProjects = useMemo(
+    () => sortProjects(projects, sort, getActorName),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, sort, members, agents],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -282,17 +346,64 @@ export function ProjectsPage() {
           <>
             {/* Column headers */}
             <div className="sticky top-0 z-[1] flex h-8 items-center gap-2 border-b bg-muted/30 px-5 text-xs font-medium text-muted-foreground">
-              {/* Icon spacer + Name */}
+              {/* Icon spacer */}
               <span className="shrink-0 w-[24px]" />
-              <span className="min-w-0 flex-1">{t(($) => $.table.name)}</span>
-              <span className="w-24 text-center shrink-0">{t(($) => $.table.priority)}</span>
-              <span className="w-28 text-center shrink-0">{t(($) => $.table.status)}</span>
-              <span className="w-24 text-center shrink-0">{t(($) => $.table.progress)}</span>
-              <span className="w-10 text-center shrink-0">{t(($) => $.table.lead)}</span>
-              <span className="w-20 text-right shrink-0">{t(($) => $.table.created)}</span>
+              <SortHeader
+                label={t(($) => $.table.name)}
+                sortKey="name"
+                active={sort.key === "name"}
+                direction={sort.direction}
+                align="left"
+                onToggle={handleToggleSort}
+              />
+              <SortHeader
+                label={t(($) => $.table.priority)}
+                sortKey="priority"
+                active={sort.key === "priority"}
+                direction={sort.direction}
+                align="center"
+                width="w-24"
+                onToggle={handleToggleSort}
+              />
+              <SortHeader
+                label={t(($) => $.table.status)}
+                sortKey="status"
+                active={sort.key === "status"}
+                direction={sort.direction}
+                align="center"
+                width="w-28"
+                onToggle={handleToggleSort}
+              />
+              <SortHeader
+                label={t(($) => $.table.progress)}
+                sortKey="progress"
+                active={sort.key === "progress"}
+                direction={sort.direction}
+                align="center"
+                width="w-24"
+                onToggle={handleToggleSort}
+              />
+              <SortHeader
+                label={t(($) => $.table.lead)}
+                sortKey="lead"
+                active={sort.key === "lead"}
+                direction={sort.direction}
+                align="center"
+                width="w-10"
+                onToggle={handleToggleSort}
+              />
+              <SortHeader
+                label={t(($) => $.table.created)}
+                sortKey="created"
+                active={sort.key === "created"}
+                direction={sort.direction}
+                align="right"
+                width="w-20"
+                onToggle={handleToggleSort}
+              />
             </div>
             {/* Rows */}
-            {projects.map((project) => (
+            {sortedProjects.map((project) => (
               <ProjectRow key={project.id} project={project} />
             ))}
           </>
