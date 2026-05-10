@@ -143,9 +143,9 @@ export function MyIssuesPage() {
             ))}
           </div>
         ) : (
-          <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
+          <div className="flex flex-1 min-h-0 gap-2 overflow-x-auto p-2">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex min-w-52 flex-1 flex-col gap-2">
+              <div key={i} className="flex w-[256px] shrink-0 flex-col gap-2">
                 <Skeleton className="h-4 w-20" />
                 <Skeleton className="h-24 w-full rounded-lg" />
                 <Skeleton className="h-24 w-full rounded-lg" />
