@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"sync"
@@ -99,24 +100,32 @@ func (s *LatestCliVersionStore) refresh() {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
 	if err != nil {
+		slog.Warn("cli release lookup: build request failed", "error", err, "url", s.url)
 		return
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := s.client.Do(req)
 	if err != nil {
+		// Logged at Warn (not Error) because the runtime-update prompt is purely
+		// informational — a stuck cache degrades UX but doesn't break the app.
+		// Operators see this and decide whether to set MULTICA_DISABLE_RELEASE_CHECK.
+		slog.Warn("cli release lookup: upstream request failed", "error", err, "url", s.url)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		slog.Warn("cli release lookup: non-200 response", "status", resp.StatusCode, "url", s.url)
 		return
 	}
 	var payload struct {
 		TagName string `json:"tag_name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		slog.Warn("cli release lookup: decode failed", "error", err)
 		return
 	}
 	if payload.TagName == "" {
+		slog.Warn("cli release lookup: empty tag_name in payload")
 		return
 	}
 	s.mu.Lock()

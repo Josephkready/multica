@@ -77,6 +77,61 @@ func TestLatestCliVersionStoreCachesAndRefreshes(t *testing.T) {
 	}
 }
 
+// TestLatestCliVersionStoreDisabledNeverCallsUpstream — when
+// MULTICA_DISABLE_RELEASE_CHECK is on, Get must short-circuit before doing
+// anything. This is the air-gapped / restricted-egress self-host promise:
+// the server never reaches out to api.github.com no matter how often the
+// handler is called.
+func TestLatestCliVersionStoreDisabledNeverCallsUpstream(t *testing.T) {
+	t.Setenv("MULTICA_DISABLE_RELEASE_CHECK", "1")
+	var calls int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&calls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v1.2.3"})
+	}))
+	t.Cleanup(server.Close)
+
+	s := NewLatestCliVersionStore()
+	s.url = server.URL
+
+	for i := 0; i < 5; i++ {
+		if v := s.Get(); v != "" {
+			t.Errorf("disabled store should always return empty, got %q", v)
+		}
+	}
+	// Give any (mistakenly) launched goroutine a moment to fire before we check.
+	time.Sleep(50 * time.Millisecond)
+	if got := atomic.LoadInt64(&calls); got != 0 {
+		t.Errorf("disabled store leaked %d upstream call(s)", got)
+	}
+}
+
+// TestGetLatestCliVersionHandlerReturnsNullOnColdCache — the handler is the
+// only path the frontend takes, so it has to render the null-when-unknown
+// shape that runtimeKeys.latestVersion treats as "no update prompt".
+func TestGetLatestCliVersionHandlerReturnsNullOnColdCache(t *testing.T) {
+	store := NewLatestCliVersionStore()
+	store.disabled = true // skip upstream lookup; cold cache stays empty
+	h := &Handler{LatestCliVersion: store}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/cli/latest-version", nil)
+	h.GetLatestCliVersion(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Version *string `json:"version"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Version != nil {
+		t.Errorf("expected null version on cold/disabled cache, got %v", *resp.Version)
+	}
+}
+
 // TestLatestCliVersionStoreUpstreamFailureKeepsStaleValue — when GitHub is
 // unreachable or rate-limits us, we keep serving the last good value rather
 // than flipping back to "". This is what makes the frontend prompt stable

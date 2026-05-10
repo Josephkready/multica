@@ -85,6 +85,7 @@ The `Secure` flag on session cookies is derived automatically from the scheme of
 | `FRONTEND_PORT` | `3000` | Frontend port |
 | `CORS_ALLOWED_ORIGINS` | Value of `FRONTEND_ORIGIN` | Comma-separated list of allowed origins |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `MULTICA_DISABLE_RELEASE_CHECK` | unset | Set to `1` or `true` to stop the backend from looking up the latest CLI release from `api.github.com`. The runtime-update prompt in the web app then stays inert. Useful for air-gapped self-host deploys and anywhere outbound traffic to GitHub is restricted. |
 
 ### CLI / Daemon
 
