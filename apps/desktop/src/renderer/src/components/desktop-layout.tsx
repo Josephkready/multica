@@ -23,6 +23,7 @@ import { TabContent } from "./tab-content";
 import { WindowOverlay } from "./window-overlay";
 
 function SidebarTopBar() {
+  const { state } = useSidebar();
   const { canGoBack, canGoForward, goBack, goForward } = useTabHistory();
 
   return (
@@ -30,27 +31,29 @@ function SidebarTopBar() {
       className="h-12 shrink-0 flex items-center justify-end px-2"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
-      <div
-        className="flex items-center gap-0.5"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
-        <button
-          onClick={goBack}
-          disabled={!canGoBack}
-          aria-label="Go back"
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+      {state === "expanded" && (
+        <div
+          className="flex items-center gap-0.5"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
-          <ChevronLeft className="size-4" />
-        </button>
-        <button
-          onClick={goForward}
-          disabled={!canGoForward}
-          aria-label="Go forward"
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
-        >
-          <ChevronRight className="size-4" />
-        </button>
-      </div>
+          <button
+            onClick={goBack}
+            disabled={!canGoBack}
+            aria-label="Go back"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <button
+            onClick={goForward}
+            disabled={!canGoForward}
+            aria-label="Go forward"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
