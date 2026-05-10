@@ -45,17 +45,15 @@ const STATUS_RANK: Record<string, number> = Object.fromEntries(
   PROJECT_STATUS_ORDER.map((s, i) => [s, i]),
 );
 
-function progressRatio(p: Project): number {
-  if (p.issue_count <= 0) return -1;
-  return p.done_count / p.issue_count;
-}
-
-function leadKey(
-  p: Project,
-  getActorName: (type: string, id: string) => string,
-): string | null {
-  if (!p.lead_type || !p.lead_id) return null;
-  return getActorName(p.lead_type, p.lead_id).toLocaleLowerCase();
+// Rows that should always sort to the bottom regardless of direction:
+// projects with no lead (when sorting by lead) and projects with no issues
+// (no progress ratio to compare). Partitioning these out before the sort
+// keeps "blank" entries pinned at the end whether the user picked asc or
+// desc, instead of flipping to the top after .reverse().
+function isSentinel(p: Project, key: ProjectSortKey): boolean {
+  if (key === "lead") return !p.lead_type || !p.lead_id;
+  if (key === "progress") return p.issue_count <= 0;
+  return false;
 }
 
 export function sortProjects(
@@ -64,7 +62,13 @@ export function sortProjects(
   getActorName: (type: string, id: string) => string,
 ): Project[] {
   const { key, direction } = sort;
-  const sorted = [...projects].sort((a, b) => {
+  const real: Project[] = [];
+  const sentinel: Project[] = [];
+  for (const p of projects) {
+    (isSentinel(p, key) ? sentinel : real).push(p);
+  }
+
+  real.sort((a, b) => {
     switch (key) {
       case "name":
         return a.title.localeCompare(b.title);
@@ -77,13 +81,10 @@ export function sortProjects(
           (STATUS_RANK[a.status] ?? 99) - (STATUS_RANK[b.status] ?? 99)
         );
       case "progress":
-        return progressRatio(a) - progressRatio(b);
+        return a.done_count / a.issue_count - b.done_count / b.issue_count;
       case "lead": {
-        const la = leadKey(a, getActorName);
-        const lb = leadKey(b, getActorName);
-        if (la === null && lb === null) return 0;
-        if (la === null) return 1;
-        if (lb === null) return -1;
+        const la = getActorName(a.lead_type!, a.lead_id!).toLocaleLowerCase();
+        const lb = getActorName(b.lead_type!, b.lead_id!).toLocaleLowerCase();
         return la.localeCompare(lb);
       }
       case "created":
@@ -92,5 +93,6 @@ export function sortProjects(
         );
     }
   });
-  return direction === "desc" ? sorted.reverse() : sorted;
+  if (direction === "desc") real.reverse();
+  return [...real, ...sentinel];
 }

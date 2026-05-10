@@ -63,7 +63,7 @@ describe("sortProjects", () => {
     expect(asc.map((p) => p.id)).toEqual(["plan", "active", "done"]);
   });
 
-  it("sorts by progress ratio and parks zero-issue projects at the bottom when descending", () => {
+  it("sorts by progress ratio and pins zero-issue projects to the bottom in both directions", () => {
     const projects = [
       makeProject({ id: "empty", issue_count: 0, done_count: 0 }),
       makeProject({ id: "half", issue_count: 4, done_count: 2 }),
@@ -71,11 +71,13 @@ describe("sortProjects", () => {
       makeProject({ id: "low", issue_count: 4, done_count: 1 }),
     ];
     const desc = sortProjects(projects, { key: "progress", direction: "desc" }, noActor);
-    // Descending: highest ratio first; "empty" (-1 sentinel) ends up last.
     expect(desc.map((p) => p.id)).toEqual(["full", "half", "low", "empty"]);
+
+    const asc = sortProjects(projects, { key: "progress", direction: "asc" }, noActor);
+    expect(asc.map((p) => p.id)).toEqual(["low", "half", "full", "empty"]);
   });
 
-  it("sorts by lead name and parks unassigned leads at the bottom for both directions", () => {
+  it("sorts by lead name and pins unassigned leads to the bottom in both directions", () => {
     const getActorName = (_type: string, id: string) =>
       ({ u1: "Alice", u2: "bob", u3: "Charlie" })[id] ?? "Unknown";
     const projects = [
@@ -88,7 +90,7 @@ describe("sortProjects", () => {
     expect(asc.map((p) => p.id)).toEqual(["alice", "bob", "charlie", "none"]);
 
     const desc = sortProjects(projects, { key: "lead", direction: "desc" }, getActorName);
-    expect(desc.map((p) => p.id)).toEqual(["none", "charlie", "bob", "alice"]);
+    expect(desc.map((p) => p.id)).toEqual(["charlie", "bob", "alice", "none"]);
   });
 
   it("sorts by created timestamp", () => {
