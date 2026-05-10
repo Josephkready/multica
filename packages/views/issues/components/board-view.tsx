@@ -283,7 +283,7 @@ export function BoardView({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
+      <div className="flex flex-1 min-h-0 gap-2 overflow-x-auto p-2">
         {visibleStatuses.map((status) => (
           <PaginatedBoardColumn
             key={status}
@@ -306,7 +306,7 @@ export function BoardView({
 
       <DragOverlay dropAnimation={null}>
         {activeIssue ? (
-          <div className="w-[280px] rotate-2 scale-105 cursor-grabbing opacity-90 shadow-lg shadow-black/10">
+          <div className="w-[256px] rotate-2 scale-105 cursor-grabbing opacity-90 shadow-lg shadow-black/10">
             <BoardCardContent issue={activeIssue} childProgress={childProgressMap.get(activeIssue.id)} />
           </div>
         ) : null}
@@ -360,7 +360,7 @@ function HiddenColumnsPanel({
 }) {
   const { t } = useT("issues");
   return (
-    <div className="flex w-[240px] shrink-0 flex-col">
+    <div className="flex w-[200px] shrink-0 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
         <span className="text-sm font-medium text-muted-foreground">
           {t(($) => $.board.hidden_columns_label)}
