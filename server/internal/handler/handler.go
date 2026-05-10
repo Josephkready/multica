@@ -230,6 +230,27 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// isCheckConstraintViolation reports whether err is a Postgres CHECK
+// constraint failure (SQLSTATE 23514). These are user-input bugs (e.g. an
+// out-of-enum status string) and should map to 400, not 500 — see the
+// project create regression that motivated this helper.
+func isCheckConstraintViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514"
+}
+
+// pgConstraintName returns the Postgres constraint name for a *pgconn.PgError,
+// or "" when err is not one. Useful for shaping a 400 message when a CHECK
+// constraint fires (e.g. "project_status_check" → tells the caller which
+// field they sent a bad value for).
+func pgConstraintName(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.ConstraintName
+	}
+	return ""
+}
+
 func requestUserID(r *http.Request) string {
 	return r.Header.Get("X-User-ID")
 }
