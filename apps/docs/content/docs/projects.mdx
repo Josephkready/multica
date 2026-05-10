@@ -15,6 +15,12 @@ Projects and issues are independent objects with a many-to-one relationship: an 
 
 The progress bar on a project is computed from its linked issues — the more issues hit `done`, the further it fills. Issues that are `cancelled` are excluded from the count; issues in `backlog` count toward the denominator but not the numerator.
 
+## Sorting the project list
+
+Click any column header on the **Workspace → Projects** page to sort by that column. A second click flips the direction; an arrow next to the header label shows which column is active and which way it's sorting. The default is newest-first by **Created**.
+
+Each column picks the more useful direction on first click — A→Z for **Name** and **Lead**, urgent-first for **Priority**, planned-first for **Status**, most-progress-first for **Progress**, newest-first for **Created**. Projects with no lead, and projects with no issues (so no progress ratio), sort to the bottom regardless of direction.
+
 ## Pinning to the sidebar
 
 Click the pin icon in a project's top-right corner to add it to your sidebar's pinned list. Pinned projects stay one click away no matter where you are in the workspace; everyone on the team can pin independently — pins are personal.
