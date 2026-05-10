@@ -12,9 +12,35 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/logger"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
+
+// projectCheckConstraintField maps a Postgres CHECK constraint name on the
+// project table to a human-readable field name. Used to turn a 23514 error
+// into "invalid status" instead of leaking the raw constraint identifier.
+// Anonymous column-level CHECKs are auto-named "<table>_<column>_check"
+// by Postgres (see migrations 034, 035), which gives a stable mapping.
+var projectCheckConstraintField = map[string]string{
+	"project_status_check":    "status",
+	"project_priority_check":  "priority",
+	"project_lead_type_check": "lead_type",
+}
+
+// projectCheckConstraintMessage returns a 400-friendly message for a CHECK
+// violation on the project table, falling back to the raw constraint name
+// when the column isn't in the table above.
+func projectCheckConstraintMessage(err error) string {
+	name := pgConstraintName(err)
+	if field, ok := projectCheckConstraintField[name]; ok {
+		return "invalid project " + field
+	}
+	if name != "" {
+		return "invalid project field: " + name
+	}
+	return "invalid project field"
+}
 
 type ProjectResponse struct {
 	ID          string  `json:"id"`
@@ -254,6 +280,16 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	if len(req.Resources) == 0 {
 		project, err := h.Queries.CreateProject(r.Context(), createParams)
 		if err != nil {
+			slog.Warn("create project failed", append(logger.RequestAttrs(r),
+				"error", err,
+				"workspace_id", workspaceID,
+				"status", status,
+				"priority", priority,
+			)...)
+			if isCheckConstraintViolation(err) {
+				writeError(w, http.StatusBadRequest, projectCheckConstraintMessage(err))
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "failed to create project")
 			return
 		}
@@ -274,6 +310,16 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 
 	project, err := qtx.CreateProject(r.Context(), createParams)
 	if err != nil {
+		slog.Warn("create project failed", append(logger.RequestAttrs(r),
+			"error", err,
+			"workspace_id", workspaceID,
+			"status", status,
+			"priority", priority,
+		)...)
+		if isCheckConstraintViolation(err) {
+			writeError(w, http.StatusBadRequest, projectCheckConstraintMessage(err))
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create project")
 		return
 	}
@@ -423,6 +469,14 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	project, err := h.Queries.UpdateProject(r.Context(), params)
 	if err != nil {
+		slog.Warn("update project failed", append(logger.RequestAttrs(r),
+			"error", err,
+			"project_id", uuidToString(prevProject.ID),
+		)...)
+		if isCheckConstraintViolation(err) {
+			writeError(w, http.StatusBadRequest, projectCheckConstraintMessage(err))
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to update project")
 		return
 	}

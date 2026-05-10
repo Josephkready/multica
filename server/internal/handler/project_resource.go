@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/logger"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -188,6 +190,11 @@ func (h *Handler) CreateProjectResource(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusConflict, "this resource is already attached to the project")
 			return
 		}
+		slog.Warn("create project resource failed", append(logger.RequestAttrs(r),
+			"error", err,
+			"project_id", uuidToString(project.ID),
+			"resource_type", req.ResourceType,
+		)...)
 		writeError(w, http.StatusInternalServerError, "failed to create project resource")
 		return
 	}
