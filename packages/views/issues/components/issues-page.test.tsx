@@ -60,22 +60,40 @@ vi.mock("../../workspace/workspace-avatar", () => ({
 }));
 
 // Mock api (queries use api internally)
-const mockListIssues = vi.hoisted(() => vi.fn().mockResolvedValue({ issues: [], total: 0 }));
+const mockListIssuesByStatus = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ by_status: {} }),
+);
 vi.mock("@multica/core/api", () => ({
   api: {
-    listIssues: (...args: any[]) => mockListIssues(...args),
+    listIssuesByStatus: (...args: any[]) => mockListIssuesByStatus(...args),
     updateIssue: vi.fn(),
     listMembers: () => Promise.resolve([]),
     listAgents: () => Promise.resolve([]),
   },
   getApi: () => ({
-    listIssues: (...args: any[]) => mockListIssues(...args),
+    listIssuesByStatus: (...args: any[]) => mockListIssuesByStatus(...args),
     updateIssue: vi.fn(),
     listMembers: () => Promise.resolve([]),
     listAgents: () => Promise.resolve([]),
   }),
   setApiInstance: vi.fn(),
 }));
+
+// Helper: given the full mockIssues array, return the bucketed shape that
+// /api/issues/by-status produces. Mirrors what the handler computes — used by
+// the per-test `mockImplementation` overrides below so we don't repeat the
+// `filter+group` plumbing in every test.
+function bucketIssues(
+  all: Issue[],
+  params: { statuses: string[] },
+): { by_status: Record<string, { issues: Issue[]; total: number }> } {
+  const by_status: Record<string, { issues: Issue[]; total: number }> = {};
+  for (const s of params.statuses) {
+    const list = all.filter((i) => i.status === s);
+    by_status[s] = { issues: list, total: list.length };
+  }
+  return { by_status };
+}
 
 // Mock issue config
 vi.mock("@multica/core/issues/config", () => ({
@@ -358,7 +376,7 @@ function renderWithQuery(ui: React.ReactElement) {
 describe("IssuesPage (shared)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockListIssues.mockResolvedValue({ issues: [], total: 0 });
+    mockListIssuesByStatus.mockResolvedValue({ by_status: {} });
     mockViewState.viewMode = "board";
     mockViewState.statusFilters = [];
     mockViewState.priorityFilters = [];
@@ -372,11 +390,8 @@ describe("IssuesPage (shared)", () => {
   });
 
   it("renders issue titles after data loads", async () => {
-    mockListIssues.mockImplementation((params: any) =>
-      Promise.resolve({
-        issues: mockIssues.filter((i) => i.status === params?.status),
-        total: mockIssues.filter((i) => i.status === params?.status).length,
-      }),
+    mockListIssuesByStatus.mockImplementation((params: any) =>
+      Promise.resolve(bucketIssues(mockIssues, params)),
     );
 
     renderWithQuery(<IssuesPage />);
@@ -387,11 +402,8 @@ describe("IssuesPage (shared)", () => {
   });
 
   it("renders board column headers", async () => {
-    mockListIssues.mockImplementation((params: any) =>
-      Promise.resolve({
-        issues: mockIssues.filter((i) => i.status === params?.status),
-        total: mockIssues.filter((i) => i.status === params?.status).length,
-      }),
+    mockListIssuesByStatus.mockImplementation((params: any) =>
+      Promise.resolve(bucketIssues(mockIssues, params)),
     );
 
     renderWithQuery(<IssuesPage />);
@@ -402,11 +414,8 @@ describe("IssuesPage (shared)", () => {
   });
 
   it("shows workspace breadcrumb with 'Issues' label", async () => {
-    mockListIssues.mockImplementation((params: any) =>
-      Promise.resolve({
-        issues: mockIssues.filter((i) => i.status === params?.status),
-        total: mockIssues.filter((i) => i.status === params?.status).length,
-      }),
+    mockListIssuesByStatus.mockImplementation((params: any) =>
+      Promise.resolve(bucketIssues(mockIssues, params)),
     );
 
     renderWithQuery(<IssuesPage />);
@@ -416,7 +425,7 @@ describe("IssuesPage (shared)", () => {
   });
 
   it("shows empty state when there are no issues", async () => {
-    mockListIssues.mockResolvedValue({ issues: [], total: 0 });
+    mockListIssuesByStatus.mockResolvedValue({ by_status: {} });
 
     renderWithQuery(<IssuesPage />);
 

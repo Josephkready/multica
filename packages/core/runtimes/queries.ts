@@ -53,24 +53,20 @@ export function runtimeListOptions(wsId: string, owner?: "me") {
   });
 }
 
-const GITHUB_RELEASES_URL =
-  "https://api.github.com/repos/multica-ai/multica/releases/latest";
-
+// Backed by GET /api/cli/latest-version, which caches the upstream GitHub
+// Releases call for 24h server-side. Before #19 the browser hit
+// api.github.com directly on every page load — a WAN call per navigation and
+// an unauthenticated github.com endpoint with a 60/hr per-IP rate limit.
 export function latestCliVersionOptions() {
   return queryOptions({
     queryKey: runtimeKeys.latestVersion(),
     queryFn: async (): Promise<string | null> => {
       try {
-        const resp = await fetch(GITHUB_RELEASES_URL, {
-          headers: { Accept: "application/vnd.github+json" },
-        });
-        if (!resp.ok) return null;
-        const data = await resp.json();
-        return (data.tag_name as string) ?? null;
+        return await api.getLatestCliVersion();
       } catch {
         return null;
       }
     },
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 10 * 60 * 1000,
   });
 }

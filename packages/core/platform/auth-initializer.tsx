@@ -17,7 +17,6 @@ import { defaultStorage } from "./storage";
 import { setCurrentWorkspace } from "./workspace-storage";
 import type { ClientIdentity } from "./types";
 import type { StorageAdapter } from "../types/storage";
-import type { User } from "../types";
 
 const logger = createLogger("auth");
 
@@ -45,33 +44,33 @@ export function AuthInitializer({
     // reads this cookie, so it has to be present before the user hits submit.
     captureSignupSource();
 
-    // Fetch app config (CDN domain, PostHog key, …) in the background — non-blocking.
-    api
-      .getConfig()
-      .then((cfg) => {
-        if (cfg.cdn_domain) configStore.getState().setCdnDomain(cfg.cdn_domain);
-        configStore.getState().setAuthConfig({
-          allowSignup: cfg.allow_signup,
-          googleClientId: cfg.google_client_id,
-          singleUser: cfg.single_user === true,
-        });
-        if (cfg.posthog_key) {
-          initAnalytics({
-            key: cfg.posthog_key,
-            host: cfg.posthog_host || "",
-            appVersion: identity?.version,
-            environment: cfg.analytics_environment,
-          });
-        }
-      })
-      .catch(() => {
-        /* config is optional — legacy file card matching degrades gracefully */
-      });
+    type BootstrapPayload = Awaited<ReturnType<typeof api.getBootstrap>>;
 
-    const onAuthSuccess = (user: User) => {
+    const applyConfig = (cfg: BootstrapPayload["config"]) => {
+      if (cfg.cdn_domain) configStore.getState().setCdnDomain(cfg.cdn_domain);
+      configStore.getState().setAuthConfig({
+        allowSignup: cfg.allow_signup,
+        googleClientId: cfg.google_client_id,
+        singleUser: cfg.single_user === true,
+      });
+      if (cfg.posthog_key) {
+        initAnalytics({
+          key: cfg.posthog_key,
+          host: cfg.posthog_host || "",
+          appVersion: identity?.version,
+          environment: cfg.analytics_environment,
+        });
+      }
+    };
+
+    const applyBootstrap = ({ user, workspaces, config }: BootstrapPayload) => {
+      applyConfig(config);
       onLogin?.();
       useAuthStore.setState({ user, isLoading: false });
       identifyAnalytics(user.id, { email: user.email, name: user.name });
+      // Seed React Query cache so the URL-driven layout can resolve the slug
+      // without a second fetch.
+      qc.setQueryData(workspaceKeys.list(), workspaces);
     };
 
     const onAuthFailure = () => {
@@ -80,22 +79,30 @@ export function AuthInitializer({
       useAuthStore.setState({ user: null, isLoading: false });
     };
 
+    // If the bootstrap call succeeds, config rides along on the auth payload —
+    // no second round trip. If it fails (e.g. session expired or backend
+    // unavailable), config still loads independently so the public landing /
+    // login UI can render correctly.
+    const ensureConfigLoaded = () =>
+      api
+        .getConfig()
+        .then((cfg) => applyConfig(cfg))
+        .catch(() => {
+          /* config is optional — legacy file card matching degrades gracefully */
+        });
+
     if (cookieAuth) {
-      // Cookie mode: the HttpOnly cookie is sent automatically by the browser.
-      // Call the API to check if the session is still valid.
-      //
-      // Seed the workspace list into React Query so the URL-driven layout can
-      // resolve the slug without a second fetch. The active workspace itself
-      // is derived from the URL by [workspaceSlug]/layout.tsx — no imperative
-      // selection here.
-      Promise.all([api.getMe(), api.listWorkspaces()])
-        .then(([user, wsList]) => {
-          onAuthSuccess(user);
-          qc.setQueryData(workspaceKeys.list(), wsList);
-        })
+      // Cookie mode: the HttpOnly cookie is sent automatically by the
+      // browser. One round trip returns user + workspaces + config.
+      api
+        .getBootstrap()
+        .then(applyBootstrap)
         .catch((err) => {
           logger.error("cookie auth init failed", err);
           onAuthFailure();
+          // Bootstrap is auth-gated, so a failure here is most often
+          // "unauthenticated" — config still has to load for the login UI.
+          ensureConfigLoaded();
         });
       return;
     }
@@ -105,24 +112,22 @@ export function AuthInitializer({
     if (!token) {
       onLogout?.();
       useAuthStore.setState({ isLoading: false });
+      ensureConfigLoaded();
       return;
     }
 
     api.setToken(token);
 
-    Promise.all([api.getMe(), api.listWorkspaces()])
-      .then(([user, wsList]) => {
-        onAuthSuccess(user);
-        // Seed React Query cache so the URL-driven layout can resolve the
-        // slug without a second fetch.
-        qc.setQueryData(workspaceKeys.list(), wsList);
-      })
+    api
+      .getBootstrap()
+      .then(applyBootstrap)
       .catch((err) => {
         logger.error("auth init failed", err);
         api.setToken(null);
         setCurrentWorkspace(null, null);
         storage.removeItem("multica_token");
         onAuthFailure();
+        ensureConfigLoaded();
       });
   }, []);
 

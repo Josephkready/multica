@@ -48,6 +48,22 @@ export interface ListIssuesResponse {
   total: number;
 }
 
+export interface ListIssuesByStatusParams {
+  statuses: IssueStatus[];
+  limit?: number;
+  workspace_id?: string;
+  priority?: IssuePriority;
+  assignee_id?: string;
+  assignee_ids?: string[];
+  creator_id?: string;
+  project_id?: string;
+}
+
+/** Raw backend response shape for `GET /api/issues/by-status`. */
+export interface ListIssuesByStatusResponse {
+  by_status: Partial<Record<IssueStatus, { issues: Issue[]; total: number }>>;
+}
+
 /** Per-status bucket in the paginated issue cache. `total` is the server count (all pages), not the length of `issues`. */
 export interface IssueStatusBucket {
   issues: Issue[];

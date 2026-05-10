@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { ListIssuesResponse, TimelineEntry } from "../types";
+import type {
+  ListIssuesByStatusResponse,
+  ListIssuesResponse,
+  TimelineEntry,
+} from "../types";
 
 // ---------------------------------------------------------------------------
 // Schemas for the highest-risk API endpoints — those whose responses drive
@@ -121,6 +125,26 @@ export const EMPTY_LIST_ISSUES_RESPONSE: ListIssuesResponse = {
   issues: [],
   total: 0,
 };
+
+// /api/issues/by-status returns one bucket per requested status. Same leniency
+// rules as ListIssuesResponseSchema — unknown bucket keys (e.g. a future
+// status added on the server before this client ships) pass through unchanged
+// via `.loose()`; missing `issues`/`total` default to empty.
+const IssueStatusBucketSchema = z
+  .object({
+    issues: z.array(IssueSchema).default([]),
+    total: z.number().default(0),
+  })
+  .loose();
+
+export const ListIssuesByStatusResponseSchema = z
+  .object({
+    by_status: z.record(z.string(), IssueStatusBucketSchema).default({}),
+  })
+  .loose();
+
+export const EMPTY_LIST_ISSUES_BY_STATUS_RESPONSE: ListIssuesByStatusResponse =
+  { by_status: {} };
 
 const SubscriberSchema = z.object({
   issue_id: z.string(),

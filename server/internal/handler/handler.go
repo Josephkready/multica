@@ -80,6 +80,7 @@ type Handler struct {
 	Analytics             analytics.Client
 	PATCache              *auth.PATCache
 	DaemonTokenCache      *auth.DaemonTokenCache
+	LatestCliVersion      *LatestCliVersionStore
 	cfg                   Config
 }
 
@@ -119,6 +120,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		Storage:               store,
 		CFSigner:              cfSigner,
 		Analytics:             analyticsClient,
+		LatestCliVersion:      NewLatestCliVersionStore(),
 		cfg:                   cfg,
 	}
 }
