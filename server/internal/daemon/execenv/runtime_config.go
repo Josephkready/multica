@@ -255,15 +255,31 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		b.WriteString(BuildCommentReplyInstructions(ctx.IssueID, ctx.TriggerCommentID))
 		b.WriteString("7. Do NOT change the issue status unless the comment explicitly asks for it\n\n")
 	} else {
-		// Assignment-triggered: defer to agent Skills for workflow specifics.
+		// Assignment-triggered: defer to agent Skills for workflow specifics
+		// (PR-flow skills like start-work / make-pr handle worktree + commit
+		// + push + PR + review end-to-end), and pick the terminal status by
+		// what actually needs human attention — `done` is the default when
+		// the agent has self-reviewed cleanly; `in_review` is opt-in for
+		// human judgment.
 		b.WriteString("You are responsible for managing the issue status throughout your work.\n\n")
 		fmt.Fprintf(&b, "1. Run `multica issue get %s --output json` to understand your task\n", ctx.IssueID)
 		fmt.Fprintf(&b, "2. Run `multica issue comment list %s --output json` to read the full comment history (returns all comments, capped server-side at 2000) — this is mandatory, not optional. Earlier comments often carry context the issue body lacks (e.g. which repo to work in, the prior agent's findings, the reason the issue was reassigned to you). Skipping this step is the most common cause of agents acting on stale or incomplete instructions.\n", ctx.IssueID)
 		fmt.Fprintf(&b, "3. Run `multica issue status %s in_progress`\n", ctx.IssueID)
-		b.WriteString("4. Follow your Skills and Agent Identity to complete the task (write code, investigate, etc.)\n")
-		fmt.Fprintf(&b, "5. **Post your final results as a comment — this step is mandatory**: `multica issue comment add %s --content \"...\"`. Your results are only visible to the user if posted via this CLI call; text in your terminal or run logs is NOT delivered.\n", ctx.IssueID)
-		fmt.Fprintf(&b, "6. When done, run `multica issue status %s in_review`\n", ctx.IssueID)
-		fmt.Fprintf(&b, "7. If blocked, run `multica issue status %s blocked` and post a comment explaining why\n\n", ctx.IssueID)
+		b.WriteString("4. Carry out the work.\n")
+		b.WriteString("   - For code changes: prefer your installed PR-flow skills end-to-end (e.g. `start-work` → edit → `make-pr` on Claude; equivalent skills on other runtimes). Those skills handle worktree creation, commit, push, PR open, review, and where applicable auto-merge — they apply more rigor than the bare CLI dance. Do NOT roll your own `multica repo checkout` + manual `git push` + `gh pr create` flow when a PR-flow skill is installed.\n")
+		b.WriteString("   - If no PR-flow skill is installed, fall back to `multica repo checkout <repo-url>` and drive git/gh by hand — and you MUST then run the review checklist in step 5 yourself before choosing a terminal status.\n")
+		b.WriteString("   - For non-code work (investigation, comment-only replies, research): just do the work directly.\n")
+		b.WriteString("5. Run a review pass on what you did before choosing a terminal status:\n")
+		b.WriteString("   - Code review — does the diff actually solve the issue? Any obvious bugs, regressions, or scope creep?\n")
+		b.WriteString("   - Test audit — are the tests that should exist actually present and passing? Did you run the suite?\n")
+		b.WriteString("   - Docs audit — does any user-facing doc / README / changelog need updating?\n")
+		b.WriteString("   - Logging audit — did you add logs where they help debug, or noise where they don't?\n")
+		b.WriteString("   If your skill stack includes a review skill (e.g. `review-pr`), invoking that satisfies this step.\n")
+		fmt.Fprintf(&b, "6. **Post your final results as a comment — this step is mandatory**: `multica issue comment add %s --content-stdin`. Include the PR URL (if any), what the review pass found, and what you decided about it. Text in your terminal or run logs is NOT delivered to the user.\n", ctx.IssueID)
+		b.WriteString("7. Choose the terminal status based on what's left for a human to do:\n")
+		fmt.Fprintf(&b, "   - `multica issue status %s done` — pick this when the change merged cleanly (auto-merge succeeded), OR the task was research / comment-only / a question with no PR needed, OR a PR is open and your review pass surfaced nothing that needs human judgment. **This is the default for self-contained, well-reviewed work.**\n", ctx.IssueID)
+		fmt.Fprintf(&b, "   - `multica issue status %s in_review` — pick this ONLY when a human actually needs to look: your review pass surfaced a judgment call (API design, ambiguous spec, security-sensitive area), OR required CI checks are failing/pending and you can't fix them, OR branch protection blocks auto-merge, OR the change is high-risk (migrations, auth, payments, infra). Always include the SPECIFIC reason in your comment when you pick this — \"needs human eyes\" is not enough.\n", ctx.IssueID)
+		fmt.Fprintf(&b, "   - `multica issue status %s blocked` — pick this when something external prevents progress (missing access, missing decision, broken environment). Post a comment explaining the blocker.\n\n", ctx.IssueID)
 	}
 
 	if len(ctx.AgentSkills) > 0 {
@@ -286,6 +302,7 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 			fmt.Fprintf(&b, "- **%s**\n", skill.Name)
 		}
 		b.WriteString("\n")
+		b.WriteString("**For code-change tasks, follow your installed PR-flow skill end-to-end** (worktree creation, commit, push, PR open, review, terminal status) instead of using `multica repo checkout` + manual git/gh. The `multica` CLI is still how you communicate progress back to the board (`issue status`, `issue comment add`) — but the PR mechanics belong to the skill.\n\n")
 	}
 
 	b.WriteString("## Mentions\n\n")

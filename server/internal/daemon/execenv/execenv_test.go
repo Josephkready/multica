@@ -585,6 +585,67 @@ func TestInjectRuntimeConfigClaude(t *testing.T) {
 	}
 }
 
+// TestInjectRuntimeConfigAssignmentWorkflowDecisionTree pins the
+// assignment-triggered workflow shape introduced for issue #17. The old
+// recipe hardcoded `in_review` as the terminal status for every completed
+// task, which forced humans into the loop for self-contained changes the
+// agent could have reviewed and merged itself. The replacement defers PR
+// work to installed skills (e.g. start-work / make-pr), runs an explicit
+// review pass, and picks `done` vs `in_review` based on whether human
+// judgment is actually required.
+func TestInjectRuntimeConfigAssignmentWorkflowDecisionTree(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	ctx := TaskContextForEnv{IssueID: "issue-42"}
+	if _, err := InjectRuntimeConfig(dir, "claude", ctx); err != nil {
+		t.Fatalf("InjectRuntimeConfig failed: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("failed to read CLAUDE.md: %v", err)
+	}
+	s := string(content)
+
+	// The new prompt must nudge the agent toward installed PR-flow skills
+	// rather than rolling its own `multica repo checkout` + manual git/gh
+	// dance, and must spell out an explicit review pass.
+	for _, want := range []string{
+		"prefer your installed PR-flow skills",
+		"start-work",
+		"make-pr",
+		"review pass",
+		"Code review",
+		"Test audit",
+		"Docs audit",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("CLAUDE.md missing %q (new workflow language)", want)
+		}
+	}
+
+	// Terminal status must be a decision tree, not a hardcoded final step.
+	for _, want := range []string{
+		"multica issue status issue-42 done",
+		"multica issue status issue-42 in_review",
+		"multica issue status issue-42 blocked",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("CLAUDE.md missing terminal-status option %q", want)
+		}
+	}
+
+	// The old hardcoded terminal step is what we're killing. If this string
+	// ever comes back the regression is real.
+	for _, banned := range []string{
+		"When done, run `multica issue status issue-42 in_review`",
+	} {
+		if strings.Contains(s, banned) {
+			t.Errorf("CLAUDE.md still contains the old hardcoded terminal step %q", banned)
+		}
+	}
+}
+
 // Regression test for #2347: the runtime config injected into agent harnesses
 // must advertise both autopilot execution modes on create AND update, so an
 // agent acting as a CLI user is not confined to create_issue.
