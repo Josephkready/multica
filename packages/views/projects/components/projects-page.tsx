@@ -5,6 +5,7 @@ import { Plus, FolderKanban, UserMinus, Check, ChevronUp, ChevronDown } from "lu
 import { useQuery } from "@tanstack/react-query";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { useUpdateProject } from "@multica/core/projects/mutations";
+import { useProjectsViewStore } from "@multica/core/projects/view-store";
 import {
   PROJECT_STATUS_CONFIG,
   PROJECT_STATUS_ORDER,
@@ -43,13 +44,7 @@ import {
   useProjectPriorityLabels,
   useFormatRelativeDate,
 } from "./labels";
-import {
-  DEFAULT_PROJECT_SORT,
-  defaultDirectionFor,
-  sortProjects,
-  type ProjectSort,
-  type ProjectSortKey,
-} from "./sort-projects";
+import { sortProjects, type ProjectSortKey } from "./sort-projects";
 
 function ProjectRow({ project }: { project: Project }) {
   const { t } = useT("projects");
@@ -280,15 +275,13 @@ export function ProjectsPage() {
   const { getActorName } = useActorName();
   const openCreateProject = () => useModalStore.getState().open("create-project");
 
-  const [sort, setSort] = useState<ProjectSort>(DEFAULT_PROJECT_SORT);
+  const sort = useProjectsViewStore((s) => s.sort);
+  const toggleSort = useProjectsViewStore((s) => s.toggleSort);
 
-  const handleToggleSort = useCallback((key: ProjectSortKey) => {
-    setSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: defaultDirectionFor(key) },
-    );
-  }, []);
+  const handleToggleSort = useCallback(
+    (key: ProjectSortKey) => toggleSort(key),
+    [toggleSort],
+  );
 
   // Sort depends on actor names (for the lead column), so re-sort whenever
   // members/agents finish loading even if the sort key didn't change.

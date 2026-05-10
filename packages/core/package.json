@@ -56,6 +56,8 @@
     "./projects/queries": "./projects/queries.ts",
     "./projects/mutations": "./projects/mutations.ts",
     "./projects/config": "./projects/config.ts",
+    "./projects/sort": "./projects/sort.ts",
+    "./projects/view-store": "./projects/view-store.ts",
     "./labels": "./labels/index.ts",
     "./labels/queries": "./labels/queries.ts",
     "./labels/mutations": "./labels/mutations.ts",
