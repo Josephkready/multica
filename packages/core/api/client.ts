@@ -9,6 +9,8 @@ import type {
   CreateMemberRequest,
   UpdateMemberRequest,
   ListIssuesParams,
+  ListIssuesByStatusParams,
+  ListIssuesByStatusResponse,
   Agent,
   CreateAgentRequest,
   UpdateAgentRequest,
@@ -90,8 +92,10 @@ import { parseWithFallback } from "./schema";
 import {
   ChildIssuesResponseSchema,
   CommentsListSchema,
+  EMPTY_LIST_ISSUES_BY_STATUS_RESPONSE,
   EMPTY_LIST_ISSUES_RESPONSE,
   EMPTY_TIMELINE_ENTRIES,
+  ListIssuesByStatusResponseSchema,
   ListIssuesResponseSchema,
   SubscribersListSchema,
   TimelineEntriesSchema,
@@ -413,6 +417,31 @@ export class ApiClient {
     return parseWithFallback(raw, ListIssuesResponseSchema, EMPTY_LIST_ISSUES_RESPONSE, {
       endpoint: "GET /api/issues",
     });
+  }
+
+  // Collapses the kanban board's per-column /api/issues?status=X round trips
+  // into a single request. Returns one bucket per requested status; same
+  // payload shape consumers were stitching together client-side.
+  async listIssuesByStatus(
+    params: ListIssuesByStatusParams,
+  ): Promise<ListIssuesByStatusResponse> {
+    const search = new URLSearchParams();
+    search.set("statuses", params.statuses.join(","));
+    if (params.limit) search.set("limit", String(params.limit));
+    if (params.workspace_id) search.set("workspace_id", params.workspace_id);
+    if (params.priority) search.set("priority", params.priority);
+    if (params.assignee_id) search.set("assignee_id", params.assignee_id);
+    if (params.assignee_ids?.length)
+      search.set("assignee_ids", params.assignee_ids.join(","));
+    if (params.creator_id) search.set("creator_id", params.creator_id);
+    if (params.project_id) search.set("project_id", params.project_id);
+    const raw = await this.fetch<unknown>(`/api/issues/by-status?${search}`);
+    return parseWithFallback(
+      raw,
+      ListIssuesByStatusResponseSchema,
+      EMPTY_LIST_ISSUES_BY_STATUS_RESPONSE,
+      { endpoint: "GET /api/issues/by-status" },
+    );
   }
 
   async searchIssues(params: { q: string; limit?: number; offset?: number; include_closed?: boolean; signal?: AbortSignal }): Promise<SearchIssuesResponse> {
@@ -844,6 +873,26 @@ export class ApiClient {
     });
   }
 
+  // /api/bootstrap — single round trip returning the same payloads as
+  // /api/me + /api/workspaces + /api/config, so first-page-load doesn't pay
+  // the phase-A waterfall described in #19. AuthInitializer calls this and
+  // fans the response out into the auth store + React Query cache.
+  async getBootstrap(): Promise<{
+    user: User;
+    workspaces: Workspace[];
+    config: {
+      cdn_domain: string;
+      allow_signup: boolean;
+      google_client_id?: string;
+      single_user?: boolean;
+      posthog_key?: string;
+      posthog_host?: string;
+      analytics_environment?: string;
+    };
+  }> {
+    return this.fetch("/api/bootstrap");
+  }
+
   // App Config
   async getConfig(): Promise<{
     cdn_domain: string;
@@ -859,6 +908,16 @@ export class ApiClient {
     analytics_environment?: string;
   }> {
     return this.fetch("/api/config");
+  }
+
+  // Latest CLI release tag, served from the backend's 24h cache so the web
+  // app doesn't hit api.github.com on every page load (see #19). null when
+  // unknown — frontend treats that as "no update prompt".
+  async getLatestCliVersion(): Promise<string | null> {
+    const resp = await this.fetch<{ version: string | null }>(
+      "/api/cli/latest-version",
+    );
+    return resp?.version ?? null;
   }
 
   // Workspaces

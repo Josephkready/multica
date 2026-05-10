@@ -194,6 +194,7 @@ const mockApiObj = vi.hoisted(() => ({
   listTaskMessages: vi.fn().mockResolvedValue([]),
   listChildIssues: vi.fn().mockResolvedValue({ issues: [] }),
   listIssues: vi.fn().mockResolvedValue({ issues: [], total: 0 }),
+  listIssuesByStatus: vi.fn().mockResolvedValue({ by_status: {} }),
   uploadFile: vi.fn(),
   listIssueReactions: vi.fn().mockResolvedValue([]),
   addIssueReaction: vi.fn(),

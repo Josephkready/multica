@@ -58,16 +58,21 @@ export function flattenIssueBuckets(data: ListIssuesCache) {
 }
 
 async function fetchFirstPages(filter: MyIssuesFilter = {}): Promise<ListIssuesCache> {
-  const responses = await Promise.all(
-    PAGINATED_STATUSES.map((status) =>
-      api.listIssues({ status, limit: ISSUE_PAGE_SIZE, offset: 0, ...filter }),
-    ),
-  );
-  const byStatus: ListIssuesCache["byStatus"] = {};
-  PAGINATED_STATUSES.forEach((status, i) => {
-    const res = responses[i]!;
-    byStatus[status] = { issues: res.issues, total: res.total };
+  // One round trip for the whole board. The server returns one bucket per
+  // requested status; statuses with no rows still appear as `{issues:[],
+  // total:0}` so the consumer's "every column rendered" invariant survives.
+  const res = await api.listIssuesByStatus({
+    statuses: [...PAGINATED_STATUSES],
+    limit: ISSUE_PAGE_SIZE,
+    ...filter,
   });
+  const byStatus: ListIssuesCache["byStatus"] = {};
+  for (const status of PAGINATED_STATUSES) {
+    const bucket = res.by_status[status];
+    byStatus[status] = bucket
+      ? { issues: bucket.issues, total: bucket.total }
+      : { issues: [], total: 0 };
+  }
   return { byStatus };
 }
 

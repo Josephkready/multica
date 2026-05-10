@@ -761,6 +761,166 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// maxIssueByStatusBuckets caps the number of status buckets a single
+// ListIssuesByStatus request can ask for. The kanban board needs 6; anything
+// higher is almost certainly a buggy or hostile caller. Bound exists to keep
+// the handler's worst-case DB work O(constant) per request.
+const maxIssueByStatusBuckets = 16
+
+// ListIssuesByStatus returns the first page of issues grouped per status,
+// collapsing the kanban board's per-column /api/issues?status=X round trips
+// into a single request. Same payload, fewer RTTs.
+//
+// Request: GET /api/issues/by-status?statuses=a,b,c[&limit=50&...filters]
+// Response: {"by_status": {"a": {"issues": [...], "total": N}, ...}}
+func (h *Handler) ListIssuesByStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
+	if !ok {
+		return
+	}
+
+	raw := r.URL.Query().Get("statuses")
+	if raw == "" {
+		writeError(w, http.StatusBadRequest, "statuses parameter is required")
+		return
+	}
+	statuses := make([]string, 0, 6)
+	seen := make(map[string]bool)
+	for _, part := range strings.Split(raw, ",") {
+		s := strings.TrimSpace(part)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		statuses = append(statuses, s)
+	}
+	if len(statuses) == 0 {
+		writeError(w, http.StatusBadRequest, "statuses parameter is required")
+		return
+	}
+	if len(statuses) > maxIssueByStatusBuckets {
+		writeError(w, http.StatusBadRequest, "too many statuses")
+		return
+	}
+
+	// Filter parsing mirrors ListIssues exactly — same validation semantics so
+	// switching callers from /api/issues to /api/issues/by-status is purely
+	// about the response shape, not the query model.
+	var priorityFilter pgtype.Text
+	if p := r.URL.Query().Get("priority"); p != "" {
+		priorityFilter = pgtype.Text{String: p, Valid: true}
+	}
+	var assigneeFilter pgtype.UUID
+	if a := r.URL.Query().Get("assignee_id"); a != "" {
+		id, ok := parseUUIDOrBadRequest(w, a, "assignee_id")
+		if !ok {
+			return
+		}
+		assigneeFilter = id
+	}
+	var assigneeIdsFilter []pgtype.UUID
+	if ids := r.URL.Query().Get("assignee_ids"); ids != "" {
+		for _, rawID := range strings.Split(ids, ",") {
+			if s := strings.TrimSpace(rawID); s != "" {
+				id, ok := parseUUIDOrBadRequest(w, s, "assignee_ids")
+				if !ok {
+					return
+				}
+				assigneeIdsFilter = append(assigneeIdsFilter, id)
+			}
+		}
+	}
+	var creatorFilter pgtype.UUID
+	if c := r.URL.Query().Get("creator_id"); c != "" {
+		id, ok := parseUUIDOrBadRequest(w, c, "creator_id")
+		if !ok {
+			return
+		}
+		creatorFilter = id
+	}
+	var projectFilter pgtype.UUID
+	if p := r.URL.Query().Get("project_id"); p != "" {
+		id, ok := parseUUIDOrBadRequest(w, p, "project_id")
+		if !ok {
+			return
+		}
+		projectFilter = id
+	}
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			limit = v
+		}
+	}
+
+	type bucket struct {
+		Issues []IssueResponse `json:"issues"`
+		Total  int64           `json:"total"`
+	}
+	buckets := make(map[string]*bucket, len(statuses))
+	var allIDs []pgtype.UUID
+	prefix := h.getIssuePrefix(ctx, wsUUID)
+
+	for _, status := range statuses {
+		statusFilter := pgtype.Text{String: status, Valid: true}
+		issues, err := h.Queries.ListIssues(ctx, db.ListIssuesParams{
+			WorkspaceID: wsUUID,
+			Limit:       int32(limit),
+			Offset:      0,
+			Status:      statusFilter,
+			Priority:    priorityFilter,
+			AssigneeID:  assigneeFilter,
+			AssigneeIds: assigneeIdsFilter,
+			CreatorID:   creatorFilter,
+			ProjectID:   projectFilter,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list issues")
+			return
+		}
+		total, err := h.Queries.CountIssues(ctx, db.CountIssuesParams{
+			WorkspaceID: wsUUID,
+			Status:      statusFilter,
+			Priority:    priorityFilter,
+			AssigneeID:  assigneeFilter,
+			AssigneeIds: assigneeIdsFilter,
+			CreatorID:   creatorFilter,
+			ProjectID:   projectFilter,
+		})
+		if err != nil {
+			total = int64(len(issues))
+		}
+
+		rows := make([]IssueResponse, len(issues))
+		for i, issue := range issues {
+			rows[i] = issueListRowToResponse(issue, prefix)
+			allIDs = append(allIDs, issue.ID)
+		}
+		buckets[status] = &bucket{Issues: rows, Total: total}
+	}
+
+	// One bulk label load across every collected issue ID — avoids the N+1
+	// pattern of looking up labels per status bucket.
+	labelsMap := h.labelsByIssue(ctx, wsUUID, allIDs)
+	for _, b := range buckets {
+		for i := range b.Issues {
+			labels := labelsMap[b.Issues[i].ID]
+			if labels == nil {
+				labels = []LabelResponse{}
+			}
+			b.Issues[i].Labels = &labels
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"by_status": buckets,
+	})
+}
+
 func (h *Handler) GetIssue(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	issue, ok := h.loadIssueForUser(w, r, id)

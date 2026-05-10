@@ -30,11 +30,11 @@ type AppConfig struct {
 	AnalyticsEnvironment string `json:"analytics_environment"`
 }
 
-// GetConfig is mounted on the public (unauthenticated) route group because
-// the web app calls it before login to decide whether to render the Google
-// sign-in button and signup UI. Only add fields here that are safe to expose
-// to anonymous callers — never user- or tenant-scoped data.
-func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
+// buildAppConfig assembles the public AppConfig from env + storage. Factored
+// out so the bootstrap endpoint can reuse the exact same shape without
+// duplicating env lookups — anything mounted on /api/config must match
+// /api/bootstrap.config byte-for-byte.
+func (h *Handler) buildAppConfig() AppConfig {
 	config := AppConfig{
 		AllowSignup:    os.Getenv("ALLOW_SIGNUP") != "false",
 		GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"),
@@ -54,6 +54,13 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 			config.PosthogHost = "https://us.i.posthog.com"
 		}
 	}
+	return config
+}
 
-	writeJSON(w, http.StatusOK, config)
+// GetConfig is mounted on the public (unauthenticated) route group because
+// the web app calls it before login to decide whether to render the Google
+// sign-in button and signup UI. Only add fields here that are safe to expose
+// to anonymous callers — never user- or tenant-scoped data.
+func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.buildAppConfig())
 }
