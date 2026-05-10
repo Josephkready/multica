@@ -27,6 +27,9 @@ dist-electron
 # test coverage
 coverage
 
+# Python (scripts/)
+__pycache__/
+
 # Go
 server/bin/
 server/tmp/
