@@ -3,9 +3,17 @@
 
 Reads ~/.config/multica/gh-sync.json, walks the configured GitHub repos via
 the `gh` CLI, and upserts each issue into the Multica board via the `multica`
-CLI. New cards land in `backlog`. Cards whose GitHub issue has been closed get
-flipped to `done`. Idempotency is keyed on a `Source: <github-url>` footer
-appended to each card's description.
+CLI. Behavior per GitHub issue:
+
+* Open, no matching card -> create the card in `backlog`.
+* Open, card already exists -> no-op.
+* Closed, card exists and is not `done` -> flip the card to `done`.
+* Closed, no matching card -> ignored. The sync mirrors the active board,
+  not the GitHub archive, so historical closed issues never made it onto
+  the board and stay off.
+
+Idempotency is keyed on a `Source: <github-url>` footer appended to each
+card's description on create.
 
 Run by hand when the board falls behind GitHub. Not a daemon, not a timer.
 
@@ -42,6 +50,7 @@ class Summary:
     created: int = 0
     closed: int = 0
     unchanged: int = 0
+    ignored: int = 0
     skipped: int = 0
     errors: int = 0
 
@@ -76,13 +85,11 @@ def expand_owners(owners: Iterable[str]) -> list[str]:
     for owner in owners:
         out = run([
             "gh", "repo", "list", owner,
-            "--no-archived", "--source-only",
+            "--no-archived", "--source",
             "--limit", "200",
-            "--json", "nameWithOwner,isFork",
+            "--json", "nameWithOwner",
         ])
         for repo in json.loads(out):
-            if repo.get("isFork"):
-                continue
             found.append(repo["nameWithOwner"])
     return found
 
@@ -244,7 +251,10 @@ def sync_repo(
         gh_state = gh["state"].lower()
         existing = by_source.get(gh_url)
         if existing is None:
-            action = create_card(repo, project_id, gh, dry_run=dry_run)
+            if gh_state == "closed":
+                action = "ignored"
+            else:
+                action = create_card(repo, project_id, gh, dry_run=dry_run)
         elif gh_state == "closed" and existing["status"] != "done":
             action = close_card(existing, dry_run=dry_run)
         else:
@@ -337,6 +347,7 @@ def main() -> int:
         f"Summary: {summary.created} created, "
         f"{summary.closed} closed, "
         f"{summary.unchanged} unchanged, "
+        f"{summary.ignored} ignored (closed on GH, never synced), "
         f"{summary.skipped} skipped, "
         f"{summary.errors} errors"
     )
