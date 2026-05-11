@@ -30,7 +30,7 @@ State / secrets / code split follows the dante convention documented in the glob
 
 - **Code changes still go through `/start-work` → `/make-pr`.** Multica's daemon shells out to `claude` in the worktree path; the agent inherits `~/.claude/skills/`, so `/start-work`, `/make-pr`, `/todo`, etc. all keep working unchanged. (Verifying this end-to-end is open question #1 of the trial.)
 - **Taskwarrior `/todo` runs in parallel for the full two weeks.** Don't migrate yet. End-of-trial decision: keep one, archive the other.
-- **GitHub Issues → board sync is a ~50-line glue script**, not a Multica feature. Lives at `/usr/local/bin/gh-to-multica.sh` driven by `gh-to-multica.timer` (15-min cadence). One-way for now (GitHub → board); revisit bidirectional after a week of production. Sketch is in the design doc.
+- **GitHub Issues → board sync is a manual one-shot CLI**, not a Multica feature. Lives at [`scripts/gh-issue-sync.py`](scripts/gh-issue-sync.py) (see [`scripts/gh-issue-sync.md`](scripts/gh-issue-sync.md) for the config schema and usage). Run by hand when the board falls behind GitHub — no daemon, no timer. One-way (GitHub → board) plus close-on-closed. Long-term direction is to file issues directly in Multica and retire this script.
 - **Codex / Gemini CLI cueing** lives in `~/.codex/AGENTS.md` and `~/.gemini/GEMINI.md` — small "when you surface a follow-up, create a Multica issue" block, mirroring how Claude's skill description cues `/todo` today.
 - **Plan-mode span review is explicitly out of scope** for this tool. Pair with Outline per [Plan Mode Artifacts](https://dante.local/docs/projects/plan-mode-artifacts.html) when the pain crosses the threshold.
 
