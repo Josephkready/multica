@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -45,7 +44,6 @@ class Summary:
     unchanged: int = 0
     skipped: int = 0
     errors: int = 0
-    project_created: int = 0
 
 
 def run(cmd: list[str], *, input_: str | None = None) -> str:
@@ -171,9 +169,14 @@ def list_issues_for_project(project_id: str) -> list[dict]:
 
 
 def extract_source_url(description: str | None) -> str | None:
+    """Return the URL from the trailing `Source: <url>` footer, if present.
+
+    Scans bottom-up so a `Source:` line inside the user-authored body (which
+    sits above the appended footer) can't shadow the real footer.
+    """
     if not description:
         return None
-    for line in description.splitlines():
+    for line in reversed(description.splitlines()):
         line = line.strip()
         if line.startswith(SOURCE_MARKER):
             return line[len(SOURCE_MARKER):].strip()
@@ -188,11 +191,20 @@ def build_description(body: str, gh_url: str) -> str:
     return footer
 
 
-def ensure_project(repo: str, index: dict[str, str], *, dry_run: bool) -> str | None:
+def ensure_project(
+    repo: str,
+    index: dict[str, str],
+    *,
+    auto_create: bool,
+    dry_run: bool,
+) -> str | None:
     url = repo_url(repo)
     pid = index.get(normalize_repo_url(url))
     if pid:
         return pid
+    if not auto_create:
+        print(f"  no Multica project attached to {url} (auto_create_projects=false)")
+        return None
     title = repo.split("/", 1)[1]
     if dry_run:
         print(f"  would create project '{title}' (--repo {url})")
@@ -302,15 +314,17 @@ def main() -> int:
     for repo in repos:
         print(f"== {repo} ==")
         try:
-            project_id = ensure_project(repo, index, dry_run=args.dry_run)
+            project_id = ensure_project(
+                repo, index,
+                auto_create=config.auto_create_projects,
+                dry_run=args.dry_run,
+            )
         except RuntimeError as e:
             print(f"  error mapping repo to project: {e}", file=sys.stderr)
             summary.errors += 1
             continue
         if project_id is None:
-            if not args.dry_run:
-                summary.skipped += 1
-                print("  skipped (no matching project)")
+            summary.skipped += 1
             continue
         try:
             sync_repo(repo, project_id, dry_run=args.dry_run, summary=summary)
