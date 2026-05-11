@@ -19,8 +19,11 @@ For each configured `owner/repo`:
 2. List issues in that project, indexed by the `Source: <github-url>` footer
    embedded in each card's description on create.
 3. For every GitHub issue (open and closed):
-   - **No matching card** → create one in `backlog` with the issue body plus a
-     `Source: <github-url>` footer.
+   - **Open and no matching card** → create one in `backlog` with the issue
+     body plus a `Source: <github-url>` footer.
+   - **Closed and no matching card** → ignored. The sync mirrors the active
+     board, not the GitHub archive, so historical closed issues never get
+     filed retroactively.
    - **Matching card and GitHub issue closed and card not yet `done`** → move
      the card to `done`.
    - **Otherwise** → no-op. Title, body, and status of open-issue cards are
@@ -43,7 +46,7 @@ zero writes when nothing has changed on either side.
 
 - `repos` — explicit `owner/repo` allowlist.
 - `owners` — every non-fork, non-archived repo for these owners (via
-  `gh repo list <owner> --no-archived --source-only`). Unions with `repos`.
+  `gh repo list <owner> --no-archived --source`). Unions with `repos`.
 - `auto_create_projects` — when a configured repo has no matching Multica
   project, create one. Default `true`.
 
@@ -66,8 +69,8 @@ scripts/gh-issue-sync.py --dry-run
 scripts/gh-issue-sync.py --config /path/to/custom.json
 ```
 
-Exits non-zero only if at least one repo errored. Per-issue summary line:
-`N created, M closed, K unchanged, X skipped, E errors`.
+Exits non-zero only if at least one repo errored. Summary line:
+`N created, M closed, K unchanged, I ignored (closed on GH, never synced), X skipped, E errors`.
 
 ## What's out of scope
 
